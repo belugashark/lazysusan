@@ -1,0 +1,19 @@
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.* ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG BUILD_SHA=unknown
+# Railway injects RAILWAY_GIT_COMMIT_SHA on GitHub-triggered builds; prefer it so
+# /stats reports the real commit in prod. Falls back to BUILD_SHA (unknown) for
+# local `railway up` / compose builds where the variable is absent.
+ARG RAILWAY_GIT_COMMIT_SHA=""
+RUN SHA="${RAILWAY_GIT_COMMIT_SHA:-$BUILD_SHA}"; \
+    CGO_ENABLED=0 go build \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.buildSha=${SHA}" \
+      -o /out/tray ./cmd/tray
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=build /out/tray /tray
+ENTRYPOINT ["/tray"]

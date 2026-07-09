@@ -1,0 +1,31 @@
+# Manual harness: one tray + two susans on a bridge network, for poking at
+# multi-client behavior by hand (`docker compose -f docker-compose.test.yaml up`).
+# Nothing in CI uses this; the e2e suite runs the real binaries directly.
+services:
+  tray:
+    build:
+      context: .
+      dockerfile: Dockerfile.tray
+    environment:
+      SUSAN_PUBLIC_URL: http://tray:8080
+      SUSAN_INSECURE: "1"
+      SUSAN_RATE_LIMIT_PER_MIN: "10"
+      SUSAN_LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+
+  susan-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.susan
+    depends_on:
+      - tray
+    command: ["--relay", "ws://tray:8080"]
+
+  susan-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.susan
+    depends_on:
+      - tray
+    command: ["--relay", "ws://tray:8080"]

@@ -1,0 +1,19 @@
+# Dev image for the susan client, used by the manual docker-compose harness
+# (docker-compose.test.yaml). CI runs the e2e suite without Docker; production
+# users install the released binary via the /get script.
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.* ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG BUILD_SHA=unknown
+ARG DEFAULT_RELAY=ws://tray:8080
+RUN CGO_ENABLED=0 go build \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.buildSha=${BUILD_SHA} -X main.defaultRelay=${DEFAULT_RELAY}" \
+      -o /out/susan ./cmd/susan
+
+FROM alpine:3.22
+RUN apk add --no-cache bash coreutils
+COPY --from=build /out/susan /usr/local/bin/susan
+ENTRYPOINT ["/usr/local/bin/susan"]

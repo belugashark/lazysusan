@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to commit SHAs because version tags can be moved to malicious
+      # commits; Dependabot bumps the pins via the version comments.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # CI never pushes, so don't leave a token on the runner for
+          # anything compromised mid-job to steal.
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          # Single source of truth for the toolchain version.
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        # Fail if anything is unformatted; `gofmt -l` lists offending files.
+        run: |
+          unformatted=$(gofmt -s -l cmd internal e2e)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+      - name: test
+        # E2E tests build real susan/tray binaries and shell out — no Docker
+        # needed, the standard runner shell suffices.
+        run: go test ./...

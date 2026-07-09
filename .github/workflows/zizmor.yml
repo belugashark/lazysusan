@@ -1,0 +1,28 @@
+name: zizmor
+
+# Lints the workflow files on every change so a future edit can't quietly
+# reintroduce an unpinned action, a persisted credential, or a template
+# injection, the classes of mistake the release pipeline was hardened against.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
+        with:
+          version: "1.26.1"
+          # SARIF upload would need security-events: write; plain log output
+          # keeps this job read-only.
+          advanced-security: false

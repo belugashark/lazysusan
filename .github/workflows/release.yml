@@ -1,0 +1,110 @@
+name: Release
+
+# Fully automated releases. Every push to main runs the tests, then svu computes
+# the next version from the Conventional Commit messages since the last tag. If a
+# release is warranted (feat/fix/breaking) the commit is tagged and GoReleaser
+# publishes the susan/tray binaries + checksums.txt to a GitHub Release, followed
+# by a build-provenance attestation (verify a download with
+# `gh attestation verify <file> --owner belugashark`). Pushes whose commits are
+# all chore/docs/ci don't bump. The "Run workflow" button with an explicit
+# version cuts that exact release — that's how the first tag on a fresh repo is
+# minted (svu would otherwise start counting from v0.0.0).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit version to release, e.g. v1.0.0 (blank = auto-compute)"
+        required: false
+
+# Grant nothing by default; the release job requests exactly what it needs.
+permissions: {}
+
+# Never let two releases race on tag creation.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the tag + publish the Release
+      id-token: write # Sigstore keyless signing for the attestation
+      attestations: write # store the attestation
+    steps:
+      # Actions are pinned to commit SHAs: version tags can be retroactively
+      # moved to malicious commits (tj-actions, March 2025); SHAs can't.
+      # Dependabot keeps the pins + comments current.
+      # This checkout keeps its token on purpose: the Tag step pushes with it.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with: # zizmor: ignore[artipacked]
+          # GoReleaser + svu need full history and tags.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          # No cache in the release job — a poisoned Actions cache must never
+          # be able to reach the published binaries.
+          cache: false
+
+      - name: Test gate
+        # Never publish binaries that don't pass the suite.
+        run: go test ./...
+
+      - name: Determine version
+        id: ver
+        env:
+          MANUAL_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$MANUAL_VERSION" ]; then
+            # A leading-dash value would be parsed by git tag as an option.
+            case "$MANUAL_VERSION" in
+              v[0-9]*) ;;
+              *) echo "version must look like v1.2.3, got: $MANUAL_VERSION"; exit 1 ;;
+            esac
+            echo "Manual release requested: $MANUAL_VERSION"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "next=$MANUAL_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          go install github.com/caarlos0/svu/v3@v3.4.1
+          svu="$(go env GOPATH)/bin/svu"
+          current=$("$svu" current)
+          next=$("$svu" next)
+          echo "current=$current next=$next"
+          if [ "$current" = "$next" ]; then
+            echo "No releasable commits since $current — skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "next=$next" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag
+        if: steps.ver.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
+        run: |
+          git tag "$NEXT"
+          git push origin "$NEXT"
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        if: steps.ver.outputs.release == 'true'
+        with:
+          # Exact pin, not "~> v2": this downloads the binary that builds and
+          # publishes the release artifacts, so a compromised upstream release
+          # must never reach it the hour it ships. Bump deliberately.
+          version: "v2.17.0"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        if: steps.ver.outputs.release == 'true'
+        with:
+          # checksums.txt covers every released binary, so attesting its
+          # entries attests them all.
+          subject-checksums: ./dist/checksums.txt

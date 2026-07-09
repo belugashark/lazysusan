@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned actions and Go dependencies current via reviewable PRs.
+# The 7-day cooldown skips just-published versions, so a compromised release
+# can't reach us within the window where such attacks are usually caught.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7

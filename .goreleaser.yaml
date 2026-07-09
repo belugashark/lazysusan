@@ -1,0 +1,74 @@
+# GoReleaser config — produces the raw per-(os,arch) binaries and checksums.txt
+# that the /get install script (internal/install/install.go) downloads and
+# verifies. The asset names and checksum filename below are a hard contract with
+# that script: it fetches `susan_${os}_${arch}` and `checksums.txt` verbatim, so
+# archives must stay format=binary (no tarball) and the checksum name must not
+# change. See https://goreleaser.com/customization/ for the schema.
+version: 2
+
+project_name: lazysusan
+
+builds:
+  - id: susan
+    main: ./cmd/susan
+    binary: susan
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # version/buildSha match the vars set by the Dockerfiles' ldflags.
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.buildSha={{ .ShortCommit }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+  - id: tray
+    main: ./cmd/tray
+    binary: tray
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.buildSha={{ .ShortCommit }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  # format=binary publishes the raw executable (no tar.gz); the name must be
+  # exactly `<binary>_<os>_<arch>` because the install script downloads that name.
+  - id: raw
+    formats: [binary]
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  # The install script hard-codes this filename and parses `sha256  name` lines.
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
+  sort: asc
+  # Just the commit subject per line — drop the noisy full SHA + author email
+  # that the default format prints.
+  format: "{{ .Message }}"
+  # Group the auto-generated release notes by Conventional Commit type.
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    # Conventional Commits: surface features and fixes, drop housekeeping noise.
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
