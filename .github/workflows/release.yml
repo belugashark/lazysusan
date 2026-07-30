@@ -38,7 +38,7 @@ jobs:
       # moved to malicious commits (tj-actions, March 2025); SHAs can't.
       # Dependabot keeps the pins + comments current.
       # This checkout keeps its token on purpose: the Tag step pushes with it.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: # zizmor: ignore[artipacked]
           # GoReleaser + svu need full history and tags.
           fetch-depth: 0
